@@ -20,6 +20,18 @@ app.set('port', port);
  */
 
 var server = http.createServer(app);
+
+//connect to MongoDB
+var mongoDB = require("mongodb").MongoClient;
+var url = "mongodb://localhost:27017";
+var db_obj = null;
+mongoDB.connect(url, function(err, db){
+  db_obj = db;
+  console.log("MongoDB Connect")
+});
+
+
+
 /**
  * Create MQTT client
  */
@@ -37,8 +49,34 @@ mqtt_client.on("message", function(topic,message){
   var obj = JSON.parse(message);
   obj.creat_at = new Date();
   console.log(obj);
+
+  var coursor = db_obj.db("Resources").collection("Temperature");
+  coursor.insertOne(obj, function(err, result){
+    if(err)
+      console.log(err);
+    else
+      console.log(JSON.stringify(result));
+  });
 });
 
+//Socket Commnucation with HTML pages
+var io = require("socket.io")(server);
+io.on("connection",function(socket){
+  socket.on("evt_temp_c2s", function(data){
+    var coursor = db_obj.db("Resources").collection("Temperature");
+    const options = {
+      sort : {"_id": -1},
+      projection : {_id: 0, tmp : 1, creat_at : 1},
+    };
+
+  var data = coursor.find({},options).limit(1)
+  data.toArray(function(err, results){
+    if(!err){
+      socket.emit("evt_temp_s2c", JSON.stringify(results[0]));
+    }
+  });
+  });
+});
 
 /**
  * Listen on provided port, on all network interfaces.
